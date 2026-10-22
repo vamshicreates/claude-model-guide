@@ -47,9 +47,31 @@ Model recommendation: Sonnet · medium — multi-file bug fix with tests to run.
 Switch with /model sonnet and /effort medium, then reply go — or reply continue.
 ```
 
-Exact versions depend on the models your plan exposes. These choices are heuristics, not benchmarks. Claude can't always see your current model or effort; when it can't, it gives the recommendation and waits for `go` or `continue`. Follow-ups, acknowledgments, and continuations of the same task don't repeat the gate. Subagents, headless (`claude -p`) runs, and scheduled tasks never stall on it.
+Exact versions depend on the models your plan exposes. These choices are heuristics, not benchmarks. Claude can't always see your current model or effort; when it can't, it gives the recommendation and waits for `go` or `continue`. Tasks that clearly fit in one turn skip the recommendation entirely (the sizing guess is shakiest there and the routing tokens are a bigger share of the job). Follow-ups, acknowledgments, and continuations of the same task don't repeat the gate. Subagents, headless (`claude -p`) runs, and scheduled tasks never stall on it.
 
 Model switching stays manual. Routing costs a few tokens, and savings depend on your workload, model, effort, and plan's usage accounting — no fixed savings are promised. This is an instruction convention, not an enforced runtime interceptor; project `CLAUDE.md` files and explicit instructions can override it.
+
+## Extension: Subagent Routing (Claude Code)
+
+Model Guide picks the model for the *main conversation*. The `subagent-routing` skill picks models *per step*, ahead of time, so nothing stops to ask. The main session stays on one model and hands work to four fixed-model subagents:
+
+| Role | Model · effort | Use for |
+|---|---|---|
+| `extractor` | Haiku · low | Extraction and formatting |
+| `analyst` | Sonnet · medium | Fan-out analysis, one piece each, in parallel |
+| `judge` | Opus · high | Verifying other workers' output |
+| `synthesizer` | Opus · high | Final answer from checked material |
+
+The rule that matters: **the judge seat never gets the cheap model.** A weak judge fails quietly, and the output still reads fine. Save money on the workers, not on the checker.
+
+```
+python3 skills/subagent-routing/scripts/setup.py install --dry-run
+python3 skills/subagent-routing/scripts/setup.py install
+```
+
+This copies the four agents into `~/.claude/agents/` (honors `CLAUDE_CONFIG_DIR` and `--claude-home PATH`). It never overwrites an agent you already have under the same name, and `uninstall` removes only the files it installed. To have Claude follow the routing rules in every session, also copy the skill: `cp -r skills/subagent-routing ~/.claude/skills/`. Start a new session afterward. Subagent roles need Claude Code; the Claude apps don't support custom subagents.
+
+Idea credit: a Reddit reply that suggested choosing models per subagent and skipping the recommendation for one-turn tasks.
 
 ## Disable or inspect
 
