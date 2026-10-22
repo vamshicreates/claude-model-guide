@@ -53,23 +53,30 @@ Model switching stays manual. Routing costs a few tokens, and savings depend on 
 
 ## Extension: Subagent Routing (Claude Code)
 
-Model Guide picks the model for the *main conversation*. The `subagent-routing` skill picks models *per step*, ahead of time, so nothing stops to ask. The main session stays on one model and hands work to four fixed-model subagents:
+Model Guide picks the model for the *main conversation*. The `subagent-routing` skill picks models *per step*, ahead of time, so nothing stops to ask. The main session stays on one model and hands work to 14 fixed-model subagents.
 
-| Role | Model · effort | Use for |
+The rule behind the assignments: **match the model to the cost of a quiet failure.** Loud, easy-to-spot mistakes can go to a cheap model. Quiet ones that still read fine go to Opus.
+
+| Seat | Model · effort | Roles |
 |---|---|---|
-| `extractor` | Haiku · low | Extraction and formatting |
-| `analyst` | Sonnet · medium | Fan-out analysis, one piece each, in parallel |
-| `judge` | Opus · high | Verifying other workers' output |
-| `synthesizer` | Opus · high | Final answer from checked material |
+| Cheap workers | Haiku · low | `scout` (find), `extractor` (extract, format), `triager` (label, sort, dedupe), `summarizer` (condense for orientation) |
+| Builders and analysts | Sonnet · medium | `analyst`, `researcher`, `implementer`, `test-writer`, `drafter`; `debugger` runs at high |
+| Planners and checkers | Opus · high | `planner`, `reviewer` (code), `judge` (claims vs sources), `synthesizer` (final answer) |
 
-The rule that matters: **the judge seat never gets the cheap model.** A weak judge fails quietly, and the output still reads fine. Save money on the workers, not on the checker.
+**Planners and checkers never get the cheap model.** A weak checker fails quietly, and the output still reads fine. Save money on the workers, not on the checking.
+
+Typical flows:
+- **Code:** `scout` → `planner` → `implementer` + `test-writer` → `reviewer`
+- **Research:** `researcher` + `analyst` in parallel → `judge` → `synthesizer`
+- **Writing:** `drafter` variants → `judge` (facts) → `synthesizer`
+- **Bulk data:** `extractor` + `triager` → `analyst` → `judge`
 
 ```
 python3 skills/subagent-routing/scripts/setup.py install --dry-run
 python3 skills/subagent-routing/scripts/setup.py install
 ```
 
-This copies the four agents into `~/.claude/agents/` (honors `CLAUDE_CONFIG_DIR` and `--claude-home PATH`). It never overwrites an agent you already have under the same name, and `uninstall` removes only the files it installed. To have Claude follow the routing rules in every session, also copy the skill: `cp -r skills/subagent-routing ~/.claude/skills/`. Start a new session afterward. Subagent roles need Claude Code; the Claude apps don't support custom subagents.
+This copies the agents into `~/.claude/agents/` (honors `CLAUDE_CONFIG_DIR` and `--claude-home PATH`). It never overwrites an agent you already have under the same name, and `uninstall` removes only the files it installed. To change a role's model, edit the `model:` and `effort:` lines in its file. To have Claude follow the routing rules in every session, also copy the skill: `cp -r skills/subagent-routing ~/.claude/skills/`. Start a new session afterward. Subagent roles need Claude Code; the Claude apps don't support custom subagents.
 
 Idea credit: a Reddit reply that suggested choosing models per subagent and skipping the recommendation for one-turn tasks.
 

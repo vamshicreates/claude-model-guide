@@ -9,7 +9,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills/subagent-routing/scripts/setup.py"
 AGENTS = ROOT / "skills/subagent-routing/agents"
-ROLES = {"extractor", "analyst", "judge", "synthesizer"}
+ROLES = {"scout", "extractor", "triager", "summarizer", "analyst", "researcher",
+         "implementer", "test-writer", "drafter", "debugger", "planner", "reviewer",
+         "judge", "synthesizer"}
+STRONG_SEATS = {"planner", "reviewer", "judge", "synthesizer"}
+WRITE_TOOLS = {"Edit", "Write", "Bash", "NotebookEdit"}
 
 
 def run(root, action, *extra, env=None):
@@ -36,9 +40,29 @@ class AgentDefinitionTests(unittest.TestCase):
             self.assertIn(meta["effort"], {"low", "medium", "high", "xhigh"})
             self.assertIn(b"claude-model-guide:subagent-routing", path.read_bytes())
 
-    def test_judge_and_synthesizer_never_use_cheap_models(self):
-        for role in ("judge", "synthesizer"):
-            self.assertEqual(self.frontmatter(AGENTS / f"{role}.md")["model"], "opus")
+    def test_planner_and_checker_seats_never_use_cheap_models(self):
+        for role in STRONG_SEATS:
+            meta = self.frontmatter(AGENTS / f"{role}.md")
+            self.assertEqual(meta["model"], "opus", role)
+            self.assertIn(meta["effort"], {"high", "xhigh"}, role)
+
+    def test_cheap_workers_are_haiku_and_cannot_modify_anything(self):
+        for role in ("scout", "extractor", "triager", "summarizer"):
+            meta = self.frontmatter(AGENTS / f"{role}.md")
+            self.assertEqual(meta["model"], "haiku", role)
+            if "tools" in meta:
+                tools = {x.strip() for x in meta["tools"].split(",")}
+                self.assertFalse(tools & WRITE_TOOLS, role)
+
+    def test_read_only_roles_do_not_get_edit_tools(self):
+        for role in ("scout", "triager", "summarizer", "planner", "researcher"):
+            tools = {x.strip() for x in self.frontmatter(AGENTS / f"{role}.md")["tools"].split(",")}
+            self.assertFalse(tools & {"Edit", "Write", "NotebookEdit"}, role)
+
+    def test_skill_lists_every_role(self):
+        skill = (ROOT / "skills/subagent-routing/SKILL.md").read_text()
+        for role in ROLES:
+            self.assertIn(f"`{role}`", skill)
 
 
 class InstallerTests(unittest.TestCase):
@@ -47,7 +71,7 @@ class InstallerTests(unittest.TestCase):
             root = Path(d)
             self.assertEqual(run(root, "install").returncode, 0)
             self.assertEqual({p.stem for p in (root / "agents").glob("*.md")}, ROLES)
-            self.assertEqual(run(root, "status").stdout.count("Installed:"), 4)
+            self.assertEqual(run(root, "status").stdout.count("Installed:"), len(ROLES))
             self.assertEqual(run(root, "install").returncode, 0)
             self.assertEqual(list((root / "agents").glob("*backup*")), [])
             self.assertEqual(run(root, "uninstall").returncode, 0)
